@@ -43,10 +43,9 @@ public class AI {
 			AITest.printWeights(weights, "weights");
 			firstTurn = false;
 		}
-		
-		
-		int[] nextMoves = new int[numberOfNodes]; // 0 is no body  
-		
+
+		int[] nextMoves = new int[numberOfNodes]; // 0 is no body
+
 		Node[] myNodes = world.getMyNodes();
 		for (Node source : myNodes) {
 			Node[] neighbours = source.getNeighbours();
@@ -55,23 +54,45 @@ public class AI {
 			for (int i = 0; i < neighboursWeight.length; i++) {
 				neighboursWeight[i] = weights[neighbours[i].getIndex()];
 			}
-			Arrays.sort(neighboursWeight);
 
-			int i = neighbours.length - 1;
-			for (; i >= 0; i--) {
-				if (neighbours[i].getOwner() != world.getMyID() && nextMoves[neighbours[i].getIndex()] != world.getMyID() + 1) {
-					world.moveArmy(source, neighbours[i],
-							source.getArmyCount());
-					nextMoves[neighbours[i].getIndex()] = world.getMyID() + 1;
+			// Arrays.sort(neighboursWeight);
+			int i = 0;
+			Node firstCandidate = null;
+			for (; i < neighboursWeight.length; i++) {
+				Node dest = candidateNeighbor(neighbours, neighboursWeight);
+
+				if (dest.getOwner() != world.getMyID()
+						&& nextMoves[dest.getIndex()] != world.getMyID() + 1) {
+					world.moveArmy(source, dest, source.getArmyCount());
+					nextMoves[dest.getIndex()] = world.getMyID() + 1;
 					break;
 				}
+				if (i == 0) {
+					firstCandidate = dest;
+				}
 			}
-			if(i < 0){
-				world.moveArmy(source, neighbours[neighbours.length - 1],
-						source.getArmyCount());
+
+			if (i == neighboursWeight.length) {
+				// if going closer to the strategic node is not available
+				// because of all seen neighbors, the army should go closer
+				// to the front line! Ay Sir!
+				world.moveArmy(source, firstCandidate, source.getArmyCount());
 			}
 		}
 
+	}
+
+	private static Node candidateNeighbor(Node[] nodes, int[] neighboursWeight) {
+		int maxWeight = -1;
+		int maxIndex = 0;
+		for (int i = 0; i < neighboursWeight.length; i++) {
+			if (maxWeight < neighboursWeight[i]) {
+				maxWeight = neighboursWeight[i];
+				maxIndex = i;
+			}
+		}
+		neighboursWeight[maxIndex] = -1;
+		return nodes[maxIndex];
 	}
 
 	private void randomDoTurn(World world) {
