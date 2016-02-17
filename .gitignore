@@ -1,0 +1,8 @@
+.settings/
+bin/
+libs/
+.classpath
+.project
+AIC16Client.eml
+AIC16-Client.userlibraries
+AIC16-Client-java.iml
