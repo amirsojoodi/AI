@@ -21,73 +21,71 @@ public class AI {
 
 	private static final int ROOT_NODE_WEIGHT = 1000;
 	private static final int PROPAGATION_FACTOR = 9; // of 10
-	private static final int PROPAGATION_ADD_FACTOR = 10;
+	private static final int PROPAGATION_ADD_FACTOR = 0; // 10
 	private static final int MAX_STRATEGIC_DEPTH = 1;
 	private static final int MAX_DISTANCE = 10000;
 	private static int numberOfNodes;
 	private static boolean firstTurn = true;
+	private static boolean strategicNodesChanged;
 	private static Node[] strategicNodes;
-	private static int[] weights;
+	private static int[] globalWeights;
 	private static int[][] allWeights;
 	private static int[][] allDistances; // TODO
 
-	private static enum GlobalState {
-		strategic, expanding, allAtack, kharTuKhar, bacteryAttack
+	private static enum GlobalStrategy {
+		getStrategicPoint, expanding, allAtack, kharTuKhar, bacteryAttack
 	};
 
-	private static enum LocalState {
+	private static enum LocalStrategies {
 		strategic, ghompoz, attack, gorooz
 	};
 
-	private static GlobalState globalState;
-	private static LocalState[] localStates;
+	private static GlobalStrategy globalStrategy;
+	private static LocalStrategies[] localStrategies;
 
 	private static Node globalGoal;
 	private static Node[] localGoals;
 
 	public void doTurn(World world) {
-		naiveDoTurn(world);
-	}
-
-	private void naiveDoTurn(World world) {
-
-		globalState = null;
+	
+		globalStrategy = null;
 		globalGoal = null;
 		localGoals = null;
-		localStates = null;
-
-		// set strategy (global, locals)
+		localStrategies = null;
 
 		// TODO check elapsed time
 
 		if (firstTurn) {
-			// printWorldStaticConfig(world);
-			numberOfNodes = world.getMap().getNodes().length;
-			//getStrategicNodes(world);
-			//AITest.printNodesNumberOfNeighbors(strategicNodes, "strategicNodes");
-			//AITest.printNodesIndex(strategicNodes, "strategicNodes");
-			getWeights(world);
-			getAllWeights(world);
-			getAllDistances(world);
-			AITest.printNodesIndex(strategicNodes, "strategicNodes");
-			AITest.printWeights(weights, "weights");
-			// AITest.printAllDistance(allDistances);
+			firstConfigurations(world);
 			firstTurn = false;
 		}
 
-/*		if (globalGoal == null || globalGoal.getOwner() != world.getMyID()) {
-			globalGoal = world.getOpponentNodes()[0];
-			AITest.printWeights(allWeights[globalGoal.getIndex()],
-					"Weights of node:" + globalGoal.getIndex());
+		setStrategies(world);
+
+		System.out.println("Global Strategy = " + globalStrategy);
+
+		if (globalStrategy == GlobalStrategy.getStrategicPoint) {
+			getGlobalWeights(world);
+			doTurnGetStrategicPoint(world);
+		} else if (globalStrategy == GlobalStrategy.expanding) {
+
 		}
 
-		if (globalState != null) {
-			if (globalState == GlobalState.allAtack) {
-				doTurnAllAtack(world, globalGoal);
-				return;
-			}
-		}
-*/
+		/*
+		 * if (globalGoal == null || globalGoal.getOwner() != world.getMyID()) {
+		 * globalGoal = world.getOpponentNodes()[0];
+		 * AITest.printWeights(allWeights[globalGoal.getIndex()],
+		 * "Weights of node:" + globalGoal.getIndex()); }
+		 * 
+		 * if (globalState != null) { if (globalState == GlobalState.allAtack) {
+		 * doTurnAllAtack(world, globalGoal); return; } }
+		 */
+
+	}
+
+	private static void doTurnGetStrategicPoint(World world) {
+		// TODO Auto-generated method stub
+
 		int[] nextMoves = new int[numberOfNodes]; // 0 is no body
 
 		Node[] myNodes = world.getMyNodes();
@@ -96,7 +94,7 @@ public class AI {
 			int[] neighboursWeight = new int[neighbours.length];
 
 			for (int i = 0; i < neighboursWeight.length; i++) {
-				neighboursWeight[i] = weights[neighbours[i].getIndex()];
+				neighboursWeight[i] = globalWeights[neighbours[i].getIndex()];
 			}
 
 			// Arrays.sort(neighboursWeight);
@@ -125,7 +123,34 @@ public class AI {
 						source.getArmyCount());
 			}
 		}
+	}
 
+	private static void setStrategies(World world) {
+		for (int i = 0; i < strategicNodes.length; i++) {
+			if (strategicNodes[i].getOwner() != world.getMyID()) {
+				globalStrategy = GlobalStrategy.getStrategicPoint;
+				return;
+			}
+		}
+
+		globalStrategy = GlobalStrategy.expanding;
+	}
+
+	private static void firstConfigurations(World world) {
+		// printWorldStaticConfig(world);
+		numberOfNodes = world.getMap().getNodes().length;
+		// getStrategicNodes(world);
+		// AITest.printNodesNumberOfNeighbors(strategicNodes, "strategicNodes");
+		// AITest.printNodesIndex(strategicNodes, "strategicNodes");
+		getAllWeights(world);
+		getAllDistances(world); // TODO if it is time consuming merge it with
+								// weights
+
+		// AITest.printNodesIndex(strategicNodes, "strategicNodes");
+		// AITest.printWeights(globalWeights, "weights");
+		// AITest.printAllDistance(allDistances);
+		strategicNodes = figureOutStrategicNodes(world, MAX_STRATEGIC_DEPTH);
+		strategicNodesChanged = true;
 	}
 
 	private void doTurnAllAtack(World world, Node globalNode) {
@@ -169,7 +194,7 @@ public class AI {
 		}
 	}
 
-	private void getAllDistances(World world) {
+	private static void getAllDistances(World world) {
 
 		allDistances = new int[numberOfNodes][numberOfNodes];
 
@@ -235,13 +260,18 @@ public class AI {
 		}
 	}
 
-	synchronized private static void getWeights(World world){
-		weights = new int[numberOfNodes];
+	private static void getGlobalWeights(World world) {
+		if (globalWeights == null) {
+			globalWeights = new int[numberOfNodes];
+		}
 
-		strategicNodes = figureOutStrategicNodes(world, MAX_STRATEGIC_DEPTH);
-
-		for (int i = 0; i < strategicNodes.length; i++) {
-			propagateWeight(strategicNodes[i], world, weights);
+		if (globalStrategy == GlobalStrategy.getStrategicPoint) {
+			if (strategicNodesChanged == true) {
+				for (int i = 0; i < strategicNodes.length; i++) {
+					propagateWeight(strategicNodes[i], world, globalWeights);
+				}
+				strategicNodesChanged = false;
+			}
 		}
 	}
 
@@ -300,7 +330,7 @@ public class AI {
 	}
 
 	private static Node[] figureOutStrategicNodes(World world, int maxDepth) {
-		
+
 		Graph map = world.getMap();
 		Integer[] expansePower = new Integer[numberOfNodes];
 		for (Node node : map.getNodes()) {
@@ -321,7 +351,7 @@ public class AI {
 
 		Node[] lastStrategic = new Node[strategicPoints.size()];
 		lastStrategic = strategicPoints.toArray(lastStrategic);
-		
+
 		return lastStrategic;
 	}
 
