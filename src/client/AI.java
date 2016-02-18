@@ -1,10 +1,12 @@
 package client;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.Queue;
 
+import client.model.Graph;
 import client.model.Node;
 
 /**
@@ -20,6 +22,7 @@ public class AI {
 	private static final int ROOT_NODE_WEIGHT = 1000;
 	private static final int PROPAGATION_FACTOR = 9; // of 10
 	private static final int PROPAGATION_ADD_FACTOR = 10;
+	private static final int MAX_STRATEGIC_DEPTH = 1;
 	private static final int MAX_DISTANCE = 10000;
 	private static int numberOfNodes;
 	private static boolean firstTurn = true;
@@ -48,8 +51,8 @@ public class AI {
 
 	private void naiveDoTurn(World world) {
 
-		globalState = GlobalState.allAtack;
-		//globalGoal = null;
+		globalState = null;
+		globalGoal = null;
 		localGoals = null;
 		localStates = null;
 
@@ -60,19 +63,19 @@ public class AI {
 		if (firstTurn) {
 			// printWorldStaticConfig(world);
 			numberOfNodes = world.getMap().getNodes().length;
-			getStrategicNodes(world);
-			AITest.printNodesNumberOfNeighbors(strategicNodes, "strategicNodes");
-			AITest.printNodesIndex(strategicNodes, "strategicNodes");
+			//getStrategicNodes(world);
+			//AITest.printNodesNumberOfNeighbors(strategicNodes, "strategicNodes");
+			//AITest.printNodesIndex(strategicNodes, "strategicNodes");
 			getWeights(world);
 			getAllWeights(world);
 			getAllDistances(world);
 			AITest.printNodesIndex(strategicNodes, "strategicNodes");
-			// AITest.printWeights(weights, "weights");
+			AITest.printWeights(weights, "weights");
 			// AITest.printAllDistance(allDistances);
 			firstTurn = false;
 		}
 
-		if (globalGoal == null) {
+/*		if (globalGoal == null || globalGoal.getOwner() != world.getMyID()) {
 			globalGoal = world.getOpponentNodes()[0];
 			AITest.printWeights(allWeights[globalGoal.getIndex()],
 					"Weights of node:" + globalGoal.getIndex());
@@ -84,7 +87,7 @@ public class AI {
 				return;
 			}
 		}
-
+*/
 		int[] nextMoves = new int[numberOfNodes]; // 0 is no body
 
 		Node[] myNodes = world.getMyNodes();
@@ -98,7 +101,7 @@ public class AI {
 
 			// Arrays.sort(neighboursWeight);
 			int i = 0;
-			Node firstCandidate = null;
+			int firstCandidateIndex = 0;
 			for (; i < neighboursWeight.length; i++) {
 				Node dest = candidateNeighbor(neighbours, neighboursWeight);
 
@@ -110,7 +113,7 @@ public class AI {
 					break;
 				}
 				if (i == 0) {
-					firstCandidate = dest;
+					firstCandidateIndex = dest.getIndex();
 				}
 			}
 
@@ -118,7 +121,8 @@ public class AI {
 				// if going closer to the strategic node is not available
 				// because of all seen neighbors, the army should go closer
 				// to the front line! Ay Sir!
-				world.moveArmy(source, firstCandidate, source.getArmyCount());
+				world.moveArmy(source.getIndex(), firstCandidateIndex,
+						source.getArmyCount());
 			}
 		}
 
@@ -231,10 +235,10 @@ public class AI {
 		}
 	}
 
-	private static void getWeights(World world) {
+	synchronized private static void getWeights(World world){
 		weights = new int[numberOfNodes];
 
-		strategicNodes = figureOutStrategicNodes(strategicNodes);
+		strategicNodes = figureOutStrategicNodes(world, MAX_STRATEGIC_DEPTH);
 
 		for (int i = 0; i < strategicNodes.length; i++) {
 			propagateWeight(strategicNodes[i], world, weights);
@@ -282,20 +286,82 @@ public class AI {
 				for (Node node : world.getMap().getNodes()) {
 					propagateWeight(node, world, allWeights[node.getIndex()]);
 				}
-				/*for (int i = 0; i < numberOfNodes; i++) {
-					propagateWeight(world.getMap().getNodes()[i], world,
-							allWeights[world.getMap().getNodes()[i].getIndex()]);
-				}*/
+				/*
+				 * for (int i = 0; i < numberOfNodes; i++) {
+				 * propagateWeight(world.getMap().getNodes()[i], world,
+				 * allWeights[world.getMap().getNodes()[i].getIndex()]); }
+				 */
 
-				System.out.println("---AllWeights computed!---");
+				System.out.println("\n---AllWeights computed!---");
 			}
 		});
 
 		thread.start();
 	}
 
-	private static Node[] figureOutStrategicNodes(Node[] nodes) {
-		return Arrays.copyOf(nodes, 2); // TODO : write this function
+	private static Node[] figureOutStrategicNodes(World world, int maxDepth) {
+		
+		Graph map = world.getMap();
+		Integer[] expansePower = new Integer[numberOfNodes];
+		for (Node node : map.getNodes()) {
+			// System.out.println("index: "+node.getIndex()+", "+node.getNeighbours().length);
+			expansePower[node.getIndex()] = BFS(node, maxDepth);
+		}
+		ArrayList<Node> strategicPoints = new ArrayList<>();
+		int maxPower = 0;
+		for (int i = 0; i < expansePower.length; i++) {
+			if (expansePower[i] > maxPower) {
+				strategicPoints.clear();
+				maxPower = expansePower[i];
+			}
+			if (expansePower[i] == maxPower) {
+				strategicPoints.add(map.getNode(i));
+			}
+		}
+
+		Node[] lastStrategic = new Node[strategicPoints.size()];
+		lastStrategic = strategicPoints.toArray(lastStrategic);
+		
+		return lastStrategic;
+	}
+
+	private static int BFS(Node root, int maxDepth) {
+		boolean[] visitedList = new boolean[numberOfNodes];
+		int numOfEdges = 0;
+		int depth = 0;
+		Node node = null;
+
+		Queue<Node> Q = new LinkedList<Node>();
+		Queue<Integer> D = new LinkedList<Integer>();
+
+		Q.add(root);
+		D.add(0);
+		visitedList[root.getIndex()] = true;
+
+		while (!Q.isEmpty()) {
+			node = Q.peek();
+			Q.remove();
+			depth = D.peek();
+			D.remove();
+
+			for (Node neighbour : node.getNeighbours()) {
+				if (depth == maxDepth) {
+					if (visitedList[neighbour.getIndex()])
+						numOfEdges++;
+				} else {
+					if (!visitedList[neighbour.getIndex()]) {
+						visitedList[neighbour.getIndex()] = true;
+						Q.add(neighbour);
+						D.add(depth + 1);
+					}
+					numOfEdges++;
+				}
+			}
+		}
+		if (numOfEdges % 2 != 0) {
+			System.err.println("BFS for finding Strategic nodes is wrong");
+		}
+		return numOfEdges / 2;
 	}
 
 	private static Node[] getStrategicNodes(World world) {
