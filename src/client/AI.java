@@ -17,28 +17,38 @@ import client.model.Node;
 @SuppressWarnings("unused")
 public class AI {
 
-	private static final int STRATEGIC_NODE_WEIGHT = 1000;
+	private static final int ROOT_NODE_WEIGHT = 1000;
 	private static final int PROPAGATION_FACTOR = 9; // of 10
+	private static final int PROPAGATION_ADD_FACTOR = 10;
 	private static int numberOfNodes;
 	private static boolean firstTurn = true;
-	private static boolean[] visitedList;
 	private static Node[] strategicNodes;
 	private static int[] weights;
+	private static int[][] allWeights;
+	private static int[][] allDistance; // TODO
+	
+	private static enum GlobalState{strategic, expanding, allAtack, kharTuKhar};
+	private static enum LocalState{strategic, ghompoz, attack};
+	private static LocalState[] localStates;
+	
+	private static Node globalGoal;
+	private static Node[] localGoals;
 
 	public void doTurn(World world) {
 		naiveDoTurn(world);
 	}
 
 	private void naiveDoTurn(World world) {
-		AITest.printNodesIndex(world.getMap().getNodes(), "worldNodes");
+		// TODO check elapsed time
+
 		if (firstTurn) {
 			// printWorldStaticConfig(world);
 			numberOfNodes = world.getMap().getNodes().length;
-			graphConfiguration(world);
 			getStrategicNodes(world);
 			AITest.printNodesNumberOfNeighbors(strategicNodes, "strategicNodes");
 			AITest.printNodesIndex(strategicNodes, "strategicNodes");
 			getWeights(world);
+			getAllWeights(world);
 			AITest.printNodesIndex(strategicNodes, "strategicNodes");
 			AITest.printWeights(weights, "weights");
 			firstTurn = false;
@@ -64,6 +74,7 @@ public class AI {
 				if (dest.getOwner() != world.getMyID()
 						&& nextMoves[dest.getIndex()] != world.getMyID() + 1) {
 					world.moveArmy(source, dest, source.getArmyCount());
+
 					nextMoves[dest.getIndex()] = world.getMyID() + 1;
 					break;
 				}
@@ -108,38 +119,42 @@ public class AI {
 		}
 	}
 
-	private static void graphConfiguration(World world) {
-		visitedList = new boolean[numberOfNodes];
-	}
-
 	private static void getWeights(World world) {
 		weights = new int[numberOfNodes];
 
 		strategicNodes = figureOutStrategicNodes(strategicNodes);
 
 		for (int i = 0; i < strategicNodes.length; i++) {
-			propagateStrategicWeight(strategicNodes[i], world, weights);
+			propagateWeight(strategicNodes[i], world, weights);
 		}
 	}
 
-	private static void propagateStrategicWeight(Node rootNode, World world,
+	private static void propagateWeight(Node rootNode, World world,
 			int[] weights) {
 		Queue<Node> q = new LinkedList<Node>();
 
-		visitedList = new boolean[numberOfNodes];
+		boolean[] visitedList = new boolean[numberOfNodes];
 		// TODO eliminate redundant news
 
 		q.add(rootNode);
 		visitedList[rootNode.getIndex()] = true;
-		weights[rootNode.getIndex()] = STRATEGIC_NODE_WEIGHT;
+		weights[rootNode.getIndex()] = ROOT_NODE_WEIGHT;
 		while (!q.isEmpty()) {
 			Node node = (Node) q.remove();
 			int parentWeight = weights[node.getIndex()];
 			for (Node child : node.getNeighbours()) {
 				if (visitedList[child.getIndex()] == false) {
-					weights[child.getIndex()] = (weights[child.getIndex()] + parentWeight
-							* PROPAGATION_FACTOR)
-							/ (PROPAGATION_FACTOR + 1);
+					if (weights[child.getIndex()] == 0) {
+						weights[child.getIndex()] = (parentWeight * PROPAGATION_FACTOR)
+								/ (PROPAGATION_FACTOR + 1);
+					} else if (weights[child.getIndex()] == ROOT_NODE_WEIGHT) {
+						;
+					} else {
+						weights[child.getIndex()] = PROPAGATION_ADD_FACTOR
+								+ Integer.max(weights[child.getIndex()],
+										(parentWeight * PROPAGATION_FACTOR)
+												/ (PROPAGATION_FACTOR + 1));
+					}
 					visitedList[child.getIndex()] = true;
 					q.add(child);
 				}
@@ -147,8 +162,24 @@ public class AI {
 		}
 	}
 
+	private static void getAllWeights(World world) {
+		Thread thread = new Thread(new Runnable() {
+			@Override
+			public void run() {
+				allWeights = new int[numberOfNodes][numberOfNodes];
+				for (int i = 0; i < numberOfNodes; i++) {
+					propagateWeight(world.getMap().getNodes()[i], world, allWeights[i]);
+				}
+				
+				System.out.println("---AllWeights computed!---");
+			}
+		});
+		
+		thread.run();
+	}
+
 	private static Node[] figureOutStrategicNodes(Node[] nodes) {
-		return Arrays.copyOf(nodes, 1); // TODO : write this function
+		return Arrays.copyOf(nodes, 2); // TODO : write this function
 	}
 
 	private static Node[] getStrategicNodes(World world) {
