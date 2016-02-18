@@ -20,17 +20,25 @@ public class AI {
 	private static final int ROOT_NODE_WEIGHT = 1000;
 	private static final int PROPAGATION_FACTOR = 9; // of 10
 	private static final int PROPAGATION_ADD_FACTOR = 10;
+	private static final int MAX_DISTANCE = 10000;
 	private static int numberOfNodes;
 	private static boolean firstTurn = true;
 	private static Node[] strategicNodes;
 	private static int[] weights;
 	private static int[][] allWeights;
-	private static int[][] allDistance; // TODO
-	
-	private static enum GlobalState{strategic, expanding, allAtack, kharTuKhar};
-	private static enum LocalState{strategic, ghompoz, attack};
+	private static int[][] allDistances; // TODO
+
+	private static enum GlobalState {
+		strategic, expanding, allAtack, kharTuKhar, bacteryAttack
+	};
+
+	private static enum LocalState {
+		strategic, ghompoz, attack, gorooz
+	};
+
+	private static GlobalState globalState;
 	private static LocalState[] localStates;
-	
+
 	private static Node globalGoal;
 	private static Node[] localGoals;
 
@@ -39,6 +47,14 @@ public class AI {
 	}
 
 	private void naiveDoTurn(World world) {
+
+		globalState = GlobalState.allAtack;
+		//globalGoal = null;
+		localGoals = null;
+		localStates = null;
+
+		// set strategy (global, locals)
+
 		// TODO check elapsed time
 
 		if (firstTurn) {
@@ -49,9 +65,24 @@ public class AI {
 			AITest.printNodesIndex(strategicNodes, "strategicNodes");
 			getWeights(world);
 			getAllWeights(world);
+			getAllDistances(world);
 			AITest.printNodesIndex(strategicNodes, "strategicNodes");
-			AITest.printWeights(weights, "weights");
+			// AITest.printWeights(weights, "weights");
+			// AITest.printAllDistance(allDistances);
 			firstTurn = false;
+		}
+
+		if (globalGoal == null) {
+			globalGoal = world.getOpponentNodes()[0];
+			AITest.printWeights(allWeights[globalGoal.getIndex()],
+					"Weights of node:" + globalGoal.getIndex());
+		}
+
+		if (globalState != null) {
+			if (globalState == GlobalState.allAtack) {
+				doTurnAllAtack(world, globalGoal);
+				return;
+			}
 		}
 
 		int[] nextMoves = new int[numberOfNodes]; // 0 is no body
@@ -91,6 +122,87 @@ public class AI {
 			}
 		}
 
+	}
+
+	private void doTurnAllAtack(World world, Node globalNode) {
+		int[] nextMoves = new int[numberOfNodes]; // 0 is no body
+
+		Node[] myNodes = world.getMyNodes();
+		for (Node source : myNodes) {
+			Node[] neighbours = source.getNeighbours();
+			int[] neighboursWeight = new int[neighbours.length];
+
+			for (int i = 0; i < neighboursWeight.length; i++) {
+				neighboursWeight[i] = allWeights[globalNode.getIndex()][neighbours[i]
+						.getIndex()];
+			}
+
+			// Arrays.sort(neighboursWeight);
+			int i = 0;
+			int firstCandidateIndex = 0;
+			for (; i < neighboursWeight.length; i++) {
+				Node dest = candidateNeighbor(neighbours, neighboursWeight);
+
+				if (dest.getOwner() != world.getMyID()
+						&& nextMoves[dest.getIndex()] != world.getMyID() + 1) {
+					world.moveArmy(source, dest, source.getArmyCount());
+
+					nextMoves[dest.getIndex()] = world.getMyID() + 1;
+					break;
+				}
+				if (i == 0) {
+					firstCandidateIndex = dest.getIndex();
+				}
+			}
+
+			if (i == neighboursWeight.length) {
+				// if going closer to the strategic node is not available
+				// because of all seen neighbors, the army should go closer
+				// to the front line! Ay Sir!
+				world.moveArmy(source.getIndex(), firstCandidateIndex,
+						source.getArmyCount());
+			}
+		}
+	}
+
+	private void getAllDistances(World world) {
+
+		allDistances = new int[numberOfNodes][numberOfNodes];
+
+		Thread thread = new Thread(new Runnable() {
+
+			@Override
+			public void run() {
+				// TODO Auto-generated method stub
+				for (int i = 0; i < numberOfNodes; i++) {
+					for (int j = 0; j < numberOfNodes; j++) {
+						allDistances[i][j] = MAX_DISTANCE;
+					}
+					allDistances[i][i] = 0;
+				}
+
+				for (int i = 0; i < numberOfNodes; i++) {
+					Node node = world.getMap().getNode(i);
+					for (Node neighbor : node.getNeighbours()) {
+						allDistances[node.getIndex()][neighbor.getIndex()] = 1;
+					}
+				}
+
+				for (int k = 0; k < numberOfNodes; k++) {
+					for (int i = 0; i < numberOfNodes; i++) {
+						for (int j = 0; j < numberOfNodes; j++) {
+							if (allDistances[i][j] > allDistances[i][k]
+									+ allDistances[k][j]) {
+								allDistances[i][j] = allDistances[i][k]
+										+ allDistances[k][j];
+							}
+						}
+					}
+				}
+			}
+		});
+
+		thread.start();
 	}
 
 	private static Node candidateNeighbor(Node[] nodes, int[] neighboursWeight) {
@@ -167,15 +279,19 @@ public class AI {
 			@Override
 			public void run() {
 				allWeights = new int[numberOfNodes][numberOfNodes];
-				for (int i = 0; i < numberOfNodes; i++) {
-					propagateWeight(world.getMap().getNodes()[i], world, allWeights[i]);
+				for (Node node : world.getMap().getNodes()) {
+					propagateWeight(node, world, allWeights[node.getIndex()]);
 				}
-				
+				/*for (int i = 0; i < numberOfNodes; i++) {
+					propagateWeight(world.getMap().getNodes()[i], world,
+							allWeights[world.getMap().getNodes()[i].getIndex()]);
+				}*/
+
 				System.out.println("---AllWeights computed!---");
 			}
 		});
-		
-		thread.run();
+
+		thread.start();
 	}
 
 	private static Node[] figureOutStrategicNodes(Node[] nodes) {
@@ -243,7 +359,7 @@ class AITest {
 	}
 
 	public static void printWeights(int[] weights, String name) {
-		System.out.println("=== Number of neighbors in " + name + " ===");
+		System.out.println("=== Weights propagation from " + name + " ===");
 		for (int i = 0; i < weights.length; i++) {
 			System.out.print("[" + i + ":" + weights[i] + "] ,");
 		}
@@ -254,6 +370,17 @@ class AITest {
 		System.out.println("=== Index of " + name + " ===");
 		for (int i = 0; i < nodes.length; i++) {
 			System.out.print("[" + i + ":" + nodes[i].getIndex() + "] ,");
+		}
+		System.out.println("\n");
+	}
+
+	public static void printAllDistance(int[][] allDistances) {
+		System.out.println("==== All Distances ====");
+		for (int i = 0; i < allDistances.length; i++) {
+			for (int j = 0; j < allDistances.length; j++) {
+				System.out.print(i + "," + j + ":" + allDistances[i][j] + "  ");
+			}
+			System.out.println();
 		}
 		System.out.println("\n");
 	}
