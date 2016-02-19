@@ -24,17 +24,21 @@ public class AI {
 	private static final int PROPAGATION_ADD_FACTOR = 0; // 10
 	private static final int MAX_STRATEGIC_DEPTH = 1;
 	private static final int MAX_DISTANCE = 10000;
-	private static int numberOfNodes;
 	private static boolean firstTurn = true;
 	private static boolean strategicNodesChanged;
-	private static int expandingRadius;
+	private static int numberOfNodes;
 	private static Node centerNode;
 	private static Node[] globalStrategicNodes;
 	private static Node[] localStrategicNodes;
 	private static Node[] boundryNodes;
+	private static Node[] frontLineNodes;
 	private static int[] globalWeights;
+	private static int[] opponentPowers;
+	private static int[] frontLinePowers;
 	private static int[][] allWeights;
 	private static int[][] allDistances;
+	private static int ourMaxPower;
+	private static int opponentMaxPower;
 
 	private static enum GlobalStrategy {
 		getStrategicPoint, expanding, allAtack, kharTuKhar, bacteryAttack
@@ -42,6 +46,10 @@ public class AI {
 
 	private static enum LocalStrategies {
 		strategic, ghompoz, attack, begorkh
+	};
+
+	private static enum AggregateFunction {
+		avg, sum, max, min
 	};
 
 	private static GlobalStrategy globalStrategy;
@@ -52,6 +60,7 @@ public class AI {
 
 	public void doTurn(World world) {
 		// TODO check elapsed time
+		// TODO if startegicNode is lost change again
 
 		if (firstTurn) {
 			firstConfigurations(world);
@@ -66,21 +75,24 @@ public class AI {
 			getGlobalWeights(world);
 			doTurnGetStrategicPoint(world);
 		} else if (globalStrategy == GlobalStrategy.expanding) {
-			getBoundryNodes(world);
+			getBoundryAndFrontLineNodes(world);
 			strategicNodesChanged = true;
 			getGlobalWeights(world);
+			AITest.printWeights(globalWeights, "globalWeights");
+			AITest.printWeights(opponentPowers, "opponentPropagetedPowers");
+			AITest.printPowers(world.getOpponentNodes(),
+					"opponentEstimatedPower");
 			doTurnExpanding(world);
 		}
 
-		/*
-		 * if (globalGoal == null || globalGoal.getOwner() != world.getMyID()) {
-		 * globalGoal = world.getOpponentNodes()[0];
-		 * AITest.printWeights(allWeights[globalGoal.getIndex()],
-		 * "Weights of node:" + globalGoal.getIndex()); }
-		 * 
-		 * if (globalState != null) { if (globalState == GlobalState.allAtack) {
-		 * doTurnAllAtack(world, globalGoal); return; } }
-		 */
+		//
+		// if (globalGoal == null || globalGoal.getOwner() != world.getMyID()) {
+		// globalGoal = world.getOpponentNodes()[0];
+		// AITest.printWeights(allWeights[globalGoal.getIndex()],
+		// "Weights of node:" + globalGoal.getIndex()); }
+		//
+		// if (globalState != null) { if (globalState == GlobalState.allAtack) {
+		// doTurnAllAtack(world, globalGoal); return; } }
 
 	}
 
@@ -103,17 +115,16 @@ public class AI {
 
 			int i = 0;
 			int firstCandidateIndex = 0;
+			Node opponentNode = null;
 			for (; i < neighboursWeight.length; i++) {
 				Node dest = candidateNeighbor(neighbours, neighboursWeight);
-
-				if (dest.getOwner() != world.getMyID()
-						&& nextMoves[dest.getIndex()] != world.getMyID() + 1) {
-					// TODO : if opponent
-					// TODO : if empty
-					
-					world.moveArmy(source, dest, source.getArmyCount());
-
-					nextMoves[dest.getIndex()] = world.getMyID() + 1;
+				if (dest.getOwner() == (1 - world.getMyID())) {
+					opponentNode = dest; 
+					if (getArmyMaxPower(dest, world) < source.getArmyCount()) {
+						// world.moveArmy(source, dest, 1);
+						// TODO: strategic
+						world.moveArmy(source, dest, source.getArmyCount());
+					}
 					break;
 				}
 				if (i == 0) {
@@ -122,11 +133,23 @@ public class AI {
 			}
 
 			if (i == neighboursWeight.length) {
-				// if going closer to the strategic node is not available
-				// because of all seen neighbors, the army should go closer
-				// to the front line! Ay Sir!
-				world.moveArmy(source.getIndex(), firstCandidateIndex,
-						source.getArmyCount());
+				i = 0;
+				for (; i < neighboursWeight.length; i++) {
+					Node dest = candidateNeighbor(neighbours, neighboursWeight);
+					if (dest.getOwner() == -1) {
+						world.moveArmy(source, dest,
+								(source.getArmyCount() + 1) / 2);
+						break;
+					}
+				}
+				if (i == neighboursWeight.length) {
+					if (opponentNode != null) {
+						world.moveArmy(source, opponentNode, 1);
+					} else {
+						world.moveArmy(source.getIndex(), firstCandidateIndex,
+								source.getArmyCount());
+					}
+				}
 			}
 		}
 	}
@@ -201,9 +224,8 @@ public class AI {
 		}
 
 		if (globalStrategy == GlobalStrategy.expanding) {
-			if (expandingRadius == 0) {
-				// TODO : Boundry
-			}
+
+			// TODO : Boundry
 			// TODO: how to get to another strategy
 		}
 	}
@@ -219,20 +241,41 @@ public class AI {
 		// TODO if distance is time consuming merge it with weights
 		figureOutStrategicNodes(world, MAX_STRATEGIC_DEPTH);
 		strategicNodesChanged = true;
-		expandingRadius = 0;
 	}
 
-	private static void getBoundryNodes(World world) {
+	private static void getBoundryAndFrontLineNodes(World world) {
+
 		ArrayList<Node> boundryPoints = new ArrayList<Node>();
-		for (Node node : world.getMyNodes()) {
-			for (Node neighbor : node.getNeighbours()) {
-				if (neighbor.getOwner() != world.getMyID()) {
-					boundryPoints.add(node);
-					break;
+		ArrayList<Node> frontLinePoints = new ArrayList<Node>();
+
+		ourMaxPower = 0;
+		opponentMaxPower = 0;
+		for (Node node : world.getMap().getNodes()) {
+			if (node.getOwner() != world.getMyID()) {
+				if (getArmyMaxPower(node, world) > opponentMaxPower) {
+					opponentMaxPower = getArmyMaxPower(node, world);
+				}
+				for (Node neighbor : node.getNeighbours()) {
+					if (neighbor.getOwner() == world.getMyID()) {
+						boundryPoints.add(node);
+						break;
+					}
+				}
+			} else {
+				if (node.getArmyCount() > ourMaxPower) {
+					ourMaxPower = node.getArmyCount();
+				}
+				for (Node neighbor : node.getNeighbours()) {
+					if (neighbor.getOwner() != world.getMyID()) {
+						frontLinePoints.add(node);
+						break;
+					}
 				}
 			}
 		}
+		frontLineNodes = new Node[frontLinePoints.size()];
 		boundryNodes = new Node[boundryPoints.size()];
+		frontLineNodes = frontLinePoints.toArray(frontLineNodes);
 		boundryNodes = boundryPoints.toArray(boundryNodes);
 	}
 
@@ -370,8 +413,107 @@ public class AI {
 
 		else if (globalStrategy == GlobalStrategy.expanding) {
 			if (strategicNodesChanged == true) {
-				combinePropagatedWeights(boundryNodes, globalWeights);
+				// combinePropagatedWeights(boundryNodes, globalWeights);
+				// TODO : add strategic Nodes
+				getPowers(world);
+				combinePropagatedWeightsBasedOnOurAndOpponentArmy(boundryNodes);
+
 				strategicNodesChanged = false;
+			}
+		}
+	}
+
+	private static void combinePropagatedWeightsBasedOnOurAndOpponentArmy(
+			Node[] sources) {
+		for (int i = 0; i < numberOfNodes; i++) {
+			int maxWeight = 0;
+			for (int j = 0; j < sources.length; j++) {
+				if (maxWeight < allWeights[sources[j].getIndex()][i]) {
+					maxWeight = allWeights[sources[j].getIndex()][i];
+				}
+			}
+			globalWeights[i] = maxWeight;
+		}
+		aggregateWeightsAndOurAndOpponentPowers(AggregateFunction.avg);
+	}
+
+	private static void aggregateWeightsAndOurAndOpponentPowers(
+			AggregateFunction func) {
+		switch (func) {
+		case sum:
+			for (int i = 0; i < numberOfNodes; i++) {
+				globalWeights[i] += opponentPowers[i] + frontLinePowers[i];
+			}
+			break;
+		case avg:
+			for (int i = 0; i < numberOfNodes; i++) {
+				globalWeights[i] = (globalWeights[i] + opponentPowers[i] + frontLinePowers[i]) / 3;
+			}
+			break;
+		case max:
+			for (int i = 0; i < numberOfNodes; i++) {
+				globalWeights[i] = Integer.max(globalWeights[i],
+						Integer.max(opponentPowers[i], frontLinePowers[i]));
+			}
+			break;
+		case min:
+			for (int i = 0; i < numberOfNodes; i++) {
+				globalWeights[i] = Integer.min(globalWeights[i],
+						Integer.max(opponentPowers[i], frontLinePowers[i]));
+			}
+			break;
+		default:
+			break;
+		}
+	}
+
+	private static void getPowers(World world) {
+		int rootPower;
+		opponentPowers = new int[numberOfNodes];
+		frontLinePowers = new int[numberOfNodes];
+		for (Node node : world.getOpponentNodes()) {
+			rootPower = (ROOT_NODE_WEIGHT * getArmyMaxPower(node, world))
+					/ opponentMaxPower;
+			propagatePower(node, world, opponentPowers, rootPower);
+		}
+		for (Node node : frontLineNodes) {
+			rootPower = (ROOT_NODE_WEIGHT * (ourMaxPower - node.getArmyCount()))
+					/ ourMaxPower;
+			propagatePower(node, world, frontLinePowers, rootPower);
+		}
+
+		for (int i = 0; i < numberOfNodes; i++) {
+			opponentPowers[i] /= world.getOpponentNodes().length;
+			frontLinePowers[i] /= frontLineNodes.length;
+		}
+	}
+
+	private static void propagatePower(Node rootNode, World world,
+			int[] powers, int rootPower) {
+		Queue<Node> q = new LinkedList<Node>();
+		Queue<Integer> powerQ = new LinkedList<Integer>();
+
+		boolean[] visitedList = new boolean[numberOfNodes];
+		int childPower, parentPower;
+
+		q.add(rootNode);
+		powerQ.add(rootPower);
+		visitedList[rootNode.getIndex()] = true;
+		powers[rootNode.getIndex()] += rootPower;
+
+		while (!q.isEmpty()) {
+			Node node = (Node) q.remove();
+			parentPower = (Integer) powerQ.remove();
+			for (Node child : node.getNeighbours()) {
+				if (visitedList[child.getIndex()] == false) {
+					childPower = (parentPower * PROPAGATION_FACTOR)
+							/ (PROPAGATION_FACTOR + 1);
+					powers[child.getIndex()] += childPower;
+
+					visitedList[child.getIndex()] = true;
+					q.add(child);
+					powerQ.add(childPower);
+				}
 			}
 		}
 	}
@@ -527,6 +669,32 @@ public class AI {
 		return numOfEdges / 2;
 	}
 
+	private static int numberOfEdgesWithinNodes(World world, Node[] nodes) {
+		int edges = 0;
+		boolean[] nodeUsed = new boolean[numberOfNodes];
+		for (Node node : nodes) {
+			nodeUsed[node.getIndex()] = true;
+		}
+		for (Node node : nodes) {
+			for (Node neighbour : nodes) {
+				if (nodeUsed[neighbour.getIndex()]) {
+					edges++;
+				}
+			}
+		}
+		return edges / 2;
+	}
+
+	private static int getArmyMaxPower(Node node, World world) {
+		int armyCount = node.getArmyCount();
+
+		if (armyCount == 0) {
+			return world.getLowArmyBound();
+		} else if (armyCount == 1) {
+			return world.getMediumArmyBound();
+		}
+		return (world.getLowArmyBound() + world.getMediumArmyBound());
+	}
 }
 
 class AITest {
@@ -543,6 +711,15 @@ class AITest {
 		System.out.println("=== Weights propagation from " + name + " ===");
 		for (int i = 0; i < weights.length; i++) {
 			System.out.print("[" + i + ":" + weights[i] + "] ,");
+		}
+		System.out.println("\n");
+	}
+
+	public static void printPowers(Node[] nodes, String name) {
+		System.out.println("=== Powers from " + name + " ===");
+		for (int i = 0; i < nodes.length; i++) {
+			System.out.print("[" + nodes[i].getIndex() + ":"
+					+ nodes[i].getArmyCount() + "] ,");
 		}
 		System.out.println("\n");
 	}
