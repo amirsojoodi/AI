@@ -124,8 +124,8 @@ public class AI {
 						// world.moveArmy(source, dest, 1);
 						// TODO: strategic
 						world.moveArmy(source, dest, source.getArmyCount());
+						break;
 					}
-					break;
 				}
 				if (i == 0) {
 					firstCandidateIndex = dest.getIndex();
@@ -133,6 +133,9 @@ public class AI {
 			}
 
 			if (i == neighboursWeight.length) {
+				for (int j = 0; j < neighboursWeight.length; j++) {
+					neighboursWeight[j] = globalWeights[neighbours[j].getIndex()];
+				}
 				i = 0;
 				for (; i < neighboursWeight.length; i++) {
 					Node dest = candidateNeighbor(neighbours, neighboursWeight);
