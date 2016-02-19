@@ -71,17 +71,18 @@ public class AI {
 
 		System.out.println("Global Strategy = " + globalStrategy);
 
+		getBoundryAndFrontLineNodes(world);
+
 		if (globalStrategy == GlobalStrategy.getStrategicPoint) {
 			getGlobalWeights(world);
 			doTurnGetStrategicPoint(world);
 		} else if (globalStrategy == GlobalStrategy.expanding) {
-			getBoundryAndFrontLineNodes(world);
 			strategicNodesChanged = true;
 			getGlobalWeights(world);
-			AITest.printWeights(globalWeights, "globalWeights");
-			AITest.printWeights(opponentPowers, "opponentPropagetedPowers");
-			AITest.printPowers(world.getOpponentNodes(),
-					"opponentEstimatedPower");
+			// AITest.printWeights(globalWeights, "globalWeights");
+			// AITest.printWeights(opponentPowers, "opponentPropagetedPowers");
+			// AITest.printPowers(world.getOpponentNodes(),
+			// "opponentEstimatedPower");
 			doTurnExpanding(world);
 		}
 
@@ -119,7 +120,7 @@ public class AI {
 			for (; i < neighboursWeight.length; i++) {
 				Node dest = candidateNeighbor(neighbours, neighboursWeight);
 				if (dest.getOwner() == (1 - world.getMyID())) {
-					opponentNode = dest; 
+					opponentNode = dest;
 					if (getArmyMaxPower(dest, world) < source.getArmyCount()) {
 						// world.moveArmy(source, dest, 1);
 						// TODO: strategic
@@ -134,7 +135,8 @@ public class AI {
 
 			if (i == neighboursWeight.length) {
 				for (int j = 0; j < neighboursWeight.length; j++) {
-					neighboursWeight[j] = globalWeights[neighbours[j].getIndex()];
+					neighboursWeight[j] = globalWeights[neighbours[j]
+							.getIndex()];
 				}
 				i = 0;
 				for (; i < neighboursWeight.length; i++) {
@@ -178,7 +180,9 @@ public class AI {
 
 				if (dest.getOwner() != world.getMyID()
 						&& nextMoves[dest.getIndex()] != world.getMyID() + 1) {
-					world.moveArmy(source, dest, source.getArmyCount());
+
+					world.moveArmy(source, dest,
+							(source.getArmyCount() * 8 + 9) / 10);
 
 					nextMoves[dest.getIndex()] = world.getMyID() + 1;
 					break;
@@ -397,11 +401,6 @@ public class AI {
 		if (globalStrategy == GlobalStrategy.getStrategicPoint) {
 			if (strategicNodesChanged == true) {
 
-				/*
-				 * for (int i = 0; i < globalStrategicNodes.length; i++) {
-				 * propagateWeight(globalStrategicNodes[i], world,
-				 * globalWeights); }
-				 */
 				if (localStrategicNodes == null
 						|| localStrategicNodes.length > 0) {
 
@@ -410,6 +409,8 @@ public class AI {
 					combinePropagatedWeights(globalStrategicNodes,
 							globalWeights);
 				}
+				getFrontLinePowers(world);
+				updatePropagatedWeightsWithFrontLinePowers();
 				strategicNodesChanged = false;
 			}
 		}
@@ -423,6 +424,12 @@ public class AI {
 
 				strategicNodesChanged = false;
 			}
+		}
+	}
+
+	private static void updatePropagatedWeightsWithFrontLinePowers() {
+		for (int i = 0; i < numberOfNodes; i++) {
+			globalWeights[i] = globalWeights[i] + frontLinePowers[i];
 		}
 	}
 
@@ -467,6 +474,20 @@ public class AI {
 			break;
 		default:
 			break;
+		}
+	}
+
+	private static void getFrontLinePowers(World world) {
+		int rootPower;
+		frontLinePowers = new int[numberOfNodes];
+		for (Node node : frontLineNodes) {
+			rootPower = (ROOT_NODE_WEIGHT * (ourMaxPower - node.getArmyCount()))
+					/ ourMaxPower;
+			propagatePower(node, world, frontLinePowers, rootPower);
+		}
+
+		for (int i = 0; i < numberOfNodes; i++) {
+			frontLinePowers[i] /= frontLineNodes.length;
 		}
 	}
 
