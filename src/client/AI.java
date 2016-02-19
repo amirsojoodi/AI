@@ -420,8 +420,8 @@ public class AI {
 				// combinePropagatedWeights(boundryNodes, globalWeights);
 				// TODO : add strategic Nodes
 				getPowers(world);
+				updatePropagatedWeightsWithStrategicNodes(world);
 				combinePropagatedWeightsBasedOnOurAndOpponentArmy(boundryNodes);
-
 				strategicNodesChanged = false;
 			}
 		}
@@ -433,6 +433,14 @@ public class AI {
 		}
 	}
 
+	private static void updatePropagatedWeightsWithStrategicNodes(World world){
+		for (Node node : globalStrategicNodes) {
+			if(node.getOwner() != world.getMyID()){
+				propagateWeight(node, world, globalWeights);
+			}	
+		}
+	}
+	
 	private static void combinePropagatedWeightsBasedOnOurAndOpponentArmy(
 			Node[] sources) {
 		for (int i = 0; i < numberOfNodes; i++) {
