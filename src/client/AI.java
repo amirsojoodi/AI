@@ -124,7 +124,12 @@ public class AI {
 					if (getArmyMaxPower(dest, world) < source.getArmyCount()) {
 						// world.moveArmy(source, dest, 1);
 						// TODO: strategic
-						world.moveArmy(source, dest, source.getArmyCount());
+						if (source.getArmyCount() > 300) {
+							world.moveArmy(source, dest,
+									source.getArmyCount() / 2);
+						} else {
+							world.moveArmy(source, dest, source.getArmyCount());
+						}
 						break;
 					}
 				}
@@ -433,14 +438,14 @@ public class AI {
 		}
 	}
 
-	private static void updatePropagatedWeightsWithStrategicNodes(World world){
+	private static void updatePropagatedWeightsWithStrategicNodes(World world) {
 		for (Node node : globalStrategicNodes) {
-			if(node.getOwner() != world.getMyID()){
+			if (node.getOwner() != world.getMyID()) {
 				propagateWeight(node, world, globalWeights);
-			}	
+			}
 		}
 	}
-	
+
 	private static void combinePropagatedWeightsBasedOnOurAndOpponentArmy(
 			Node[] sources) {
 		for (int i = 0; i < numberOfNodes; i++) {
