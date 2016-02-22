@@ -100,6 +100,7 @@ public class AI {
 	private void doTurnExpanding(World world) {
 		int[] nextArmies = new int[numberOfNodes]; // TODO
 		int[] nextMoves = new int[numberOfNodes]; // 0 is no body
+		ArrayList<Node> armyWithEmptyNeighbors = new ArrayList<Node>();
 
 		Node[] myNodes = world.getMyNodes();
 		for (Node source : myNodes) {
@@ -147,8 +148,11 @@ public class AI {
 				for (; i < neighboursWeight.length; i++) {
 					Node dest = candidateNeighbor(neighbours, neighboursWeight);
 					if (dest.getOwner() == -1) {
-						world.moveArmy(source, dest,
-								(source.getArmyCount() + 1) / 2);
+						/*
+						 * world.moveArmy(source, dest, (source.getArmyCount() +
+						 * 1) / 2);
+						 */
+						armyWithEmptyNeighbors.add(source);
 						break;
 					}
 				}
@@ -162,11 +166,74 @@ public class AI {
 				}
 			}
 		}
+		// these are for the only ones that does not have any opponent as a
+		// neighbor and has at least one empty neighbor.
+		if (armyWithEmptyNeighbors.size() == 0) {
+			return;
+		}
+		ArrayList<Node> emptyBoundries = new ArrayList<>();
+
+		System.out.print("empty Nodes : ");
+		for (Node node : boundryNodes) {
+			if (node.getOwner() == -1) {
+				emptyBoundries.add(node);
+				System.out.print(node.getIndex() + ", ");
+			}
+		}
+
+		boolean[] selectedEmptyNodes = new boolean[emptyBoundries.size()];
+		System.out.println();
+
+		System.out.print("BoundryWithAtLeastOneEmptyNeighbor : ");
+		for (Node node : armyWithEmptyNeighbors) {
+			if (node.getOwner() == world.getMyID()) {
+				System.out.print(node.getIndex() + ", ");
+			}
+		}
+		System.out.println();
+
+		for (int j = 0; j < armyWithEmptyNeighbors.size(); j++) {
+			int count = 0;
+			Node emptyNode, node = armyWithEmptyNeighbors.get(j), dest = null;
+			int selectedEmptyNode = 0;
+			for (int k = 0; k < emptyBoundries.size(); k++) {
+				emptyNode = emptyBoundries.get(k);
+
+				if (allDistances[emptyNode.getIndex()][node.getIndex()] == 1) {
+					dest = emptyNode;
+					if (selectedEmptyNodes[k] == false) {
+						count++;
+						selectedEmptyNode = k;
+					}
+				}
+			}
+			if (count == 1) {
+				world.moveArmy(node, dest, (node.getArmyCount() * 8 + 9) / 10);
+				armyWithEmptyNeighbors.remove(j);
+				selectedEmptyNodes[selectedEmptyNode] = true;
+				j = -1;
+			} else if (count >= 2 && armyWithEmptyNeighbors.size() == 1) {
+				world.moveArmy(node, dest, (node.getArmyCount() * 8 + 9) / 10);
+				armyWithEmptyNeighbors.remove(j);
+				selectedEmptyNodes[selectedEmptyNode] = true;
+				j = -1;
+			} else if (j == armyWithEmptyNeighbors.size() - 1) {
+				world.moveArmy(node, dest, (node.getArmyCount() * 8 + 9) / 10);
+				armyWithEmptyNeighbors.remove(j);
+				selectedEmptyNodes[selectedEmptyNode] = true;
+				j = -1;
+			}
+		}
 	}
 
 	private static void doTurnGetStrategicPoint(World world) {
 
+		if (world.getTurnNumber() > 1) {
+			System.out.println("turn = " + world.getTurnNumber());
+		}
+
 		int[] nextMoves = new int[numberOfNodes]; // 0 is no body
+		ArrayList<Node> armyWithEmptyNeighbors = new ArrayList<Node>();
 
 		Node[] myNodes = world.getMyNodes();
 		for (Node source : myNodes) {
@@ -183,13 +250,21 @@ public class AI {
 			for (; i < neighboursWeight.length; i++) {
 				Node dest = candidateNeighbor(neighbours, neighboursWeight);
 
-				if (dest.getOwner() != world.getMyID()
-						&& nextMoves[dest.getIndex()] != world.getMyID() + 1) {
-
-					world.moveArmy(source, dest,
-							(source.getArmyCount() * 8 + 9) / 10);
-
-					nextMoves[dest.getIndex()] = world.getMyID() + 1;
+				/*
+				 * if (dest.getOwner() != world.getMyID() &&
+				 * nextMoves[dest.getIndex()] != world.getMyID() + 1) {
+				 * 
+				 * world.moveArmy(source, dest, (source.getArmyCount() * 8 + 9)
+				 * / 10);
+				 * 
+				 * nextMoves[dest.getIndex()] = world.getMyID() + 1; break; }
+				 */
+				if (dest.getOwner() == -1) {
+					// if(world.getTurnNumber() <= 3){
+					// world.moveArmy(source, dest, (source.getArmyCount() * 8 +
+					// 9) / 10);
+					// }
+					armyWithEmptyNeighbors.add(source);
 					break;
 				}
 				if (i == 0) {
@@ -203,6 +278,65 @@ public class AI {
 				// to the front line! Ay Sir!
 				world.moveArmy(source.getIndex(), firstCandidateIndex,
 						source.getArmyCount());
+			}
+		}
+		// these are for the only ones that does not have any opponent as a
+		// neighbor and has at least one empty neighbor.
+		// if(world.getTurnNumber() <= 3){
+		// return;
+		// }
+		if (armyWithEmptyNeighbors.size() == 0) {
+			return;
+		}
+		ArrayList<Node> emptyBoundries = new ArrayList<>();
+
+		System.out.print("empty Nodes : ");
+		for (Node node : boundryNodes) {
+			if (node.getOwner() == -1) {
+				emptyBoundries.add(node);
+				System.out.print(node.getIndex() + ", ");
+			}
+		}
+
+		boolean[] selectedEmptyNodes = new boolean[emptyBoundries.size()];
+		System.out.println();
+
+		System.out.print("BoundryWithAtLeastOneEmptyNeighbor : ");
+		for (Node node : armyWithEmptyNeighbors) {
+			if (node.getOwner() == world.getMyID()) {
+				System.out.print(node.getIndex() + ", ");
+			}
+		}
+		System.out.println();
+
+		for (int j = 0; j < armyWithEmptyNeighbors.size(); j++) {
+			int count = 0;
+			Node emptyNode, dest = null, node = armyWithEmptyNeighbors.get(j);
+			int selectedEmptyNode = 0;
+			for (int k = 0; k < emptyBoundries.size(); k++) {
+				emptyNode = emptyBoundries.get(k);
+				if (allDistances[emptyNode.getIndex()][node.getIndex()] == 1
+						&& selectedEmptyNodes[k] == false) {
+					count++;
+					dest = emptyNode;
+					selectedEmptyNode = k;
+				}
+			}
+			if (count == 1) {
+				world.moveArmy(node, dest, (node.getArmyCount() * 8 + 9) / 10);
+				armyWithEmptyNeighbors.remove(j);
+				selectedEmptyNodes[selectedEmptyNode] = true;
+				j = -1;
+			} else if (count >= 2 && armyWithEmptyNeighbors.size() == 1) {
+				world.moveArmy(node, dest, (node.getArmyCount() * 8 + 9) / 10);
+				armyWithEmptyNeighbors.remove(j);
+				selectedEmptyNodes[selectedEmptyNode] = true;
+				j = -1;
+			} else if (j == armyWithEmptyNeighbors.size() - 1) {
+				world.moveArmy(node, dest, (node.getArmyCount() * 8 + 9) / 10);
+				armyWithEmptyNeighbors.remove(j);
+				selectedEmptyNodes[selectedEmptyNode] = true;
+				j = -1;
 			}
 		}
 	}
@@ -617,7 +751,7 @@ public class AI {
 			propagateWeight(node, world, allWeights[node.getIndex()]);
 		}
 
-		System.out.println("\n---AllWeights computed!---");
+		// System.out.println("\n---AllWeights computed!---");
 	}
 
 	private static void figureOutStrategicNodes(World world, int maxDepth) {
